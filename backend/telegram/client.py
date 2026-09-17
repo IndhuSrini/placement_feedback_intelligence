@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from typing import List
 
 from telethon import TelegramClient
@@ -47,6 +48,19 @@ def get_telegram_session() -> str:
     return value
 
 
+def get_telegram_session_path() -> str:
+    """Return a stable session path in the backend/telegram folder.
+
+    Telethon resolves relative session names against the current working directory.
+    That makes the session file change depending on where the script is launched.
+    To keep Stage 5.3 and Stage 5.4 using the same authenticated session, we
+    pin the session file to the same backend/telegram folder used by the project.
+    """
+    session_name = get_telegram_session()
+    session_path = Path(__file__).resolve().parent / session_name
+    return str(session_path)
+
+
 def get_authorized_chat_ids() -> List[int]:
     raw_value = os.getenv("TELEGRAM_CHAT_IDS", "")
     if not raw_value or not raw_value.strip():
@@ -81,7 +95,7 @@ def create_client() -> TelegramClient:
 
     api_id = get_telegram_api_id()
     api_hash = get_telegram_api_hash()
-    session_name = get_telegram_session()
+    session_name = get_telegram_session_path()
 
     try:
         return TelegramClient(session_name, api_id, api_hash)
