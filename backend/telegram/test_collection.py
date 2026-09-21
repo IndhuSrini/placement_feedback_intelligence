@@ -66,13 +66,7 @@ async def main() -> None:
             return
 
         configured_chat_ids = get_authorized_chat_ids()
-        if not configured_chat_ids:
-            configured_chat_ids = ["-1003672729405"]
-
         target_chat_id = configured_chat_ids[0]
-        known_chat_id = "-1003672729405"
-        if str(target_chat_id) != known_chat_id and known_chat_id in {str(chat_id) for chat_id in configured_chat_ids}:
-            target_chat_id = known_chat_id
 
         try:
             entity = await client.get_entity(target_chat_id)

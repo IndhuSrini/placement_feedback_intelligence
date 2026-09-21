@@ -24,6 +24,7 @@ if str(BACKEND_DIR) not in sys.path:
 from telegram.client import (
     TelegramConfigError,
     create_client,
+    get_authorized_chat_ids,
 )
 
 
@@ -43,30 +44,44 @@ async def main() -> None:
         if not await client.is_user_authorized():
             await client.start()
 
+        configured_chat_ids = set(get_authorized_chat_ids())
         dialogs = await client.get_dialogs(limit=50)
 
         if not dialogs:
             print("No Telegram dialogs found for this account.")
             return
 
-        print("Telegram dialogs:")
-        for index, dialog in enumerate(dialogs, start=1):
+        matching_dialogs = []
+        for dialog in dialogs:
             entity = getattr(dialog, "entity", None)
             if entity is None:
                 continue
 
             chat_id = getattr(entity, "id", None)
+            if chat_id in configured_chat_ids:
+                matching_dialogs.append((entity, chat_id))
+
+        if not matching_dialogs:
+            print(f"No configured Telegram chats found for IDs: {sorted(configured_chat_ids)}")
+            return
+
+        print("Configured Telegram chats:")
+        for index, (entity, chat_id) in enumerate(matching_dialogs, start=1):
             title = getattr(entity, "title", None)
             if title is None:
                 title = getattr(entity, "first_name", None) or getattr(entity, "username", None) or "Unknown"
 
-            raw_type = getattr(entity, "stringify", None)
-            if callable(raw_type):
-                chat_type = str(raw_type()).lower()
+            if getattr(entity, "is_channel", False):
+                chat_type = "channel"
+            elif getattr(entity, "is_supergroup", False):
+                chat_type = "supergroup"
+            elif getattr(entity, "is_group", False):
+                chat_type = "group"
+            elif getattr(entity, "is_user", False):
+                chat_type = "user"
             else:
-                chat_type = str(getattr(entity, "_title", "unknown")).lower()
+                chat_type = type(entity).__name__.lower()
 
-            # Only show safe metadata: numeric ID, title/name, and type.
             print(f"{index}. ID: {chat_id} | Name: {title} | Type: {chat_type}")
 
     except TelegramConfigError as exc:

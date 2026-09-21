@@ -28,7 +28,7 @@ BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-from telegram.client import create_client
+from telegram.client import create_client, get_authorized_chat_ids
 
 
 async def main() -> None:
@@ -49,11 +49,27 @@ async def main() -> None:
             # We do not print the phone number, OTP, or password.
             await client.start()
 
-        # Only print a safe confirmation after successful login.
-        print("Telegram connection successful")
+        configured_chat_ids = get_authorized_chat_ids()
+        target_chat_id = configured_chat_ids[0]
+        entity = await client.get_entity(target_chat_id)
 
-        # Optional: fetch the account info without exposing any credentials.
-        # This is intentionally kept minimal and safe.
+        chat_name = getattr(entity, "title", None) or getattr(entity, "first_name", None) or getattr(entity, "username", None) or "Unknown"
+        if getattr(entity, "is_channel", False):
+            chat_type = "channel"
+        elif getattr(entity, "is_supergroup", False):
+            chat_type = "supergroup"
+        elif getattr(entity, "is_group", False):
+            chat_type = "group"
+        elif getattr(entity, "is_user", False):
+            chat_type = "user"
+        else:
+            chat_type = type(entity).__name__.lower()
+
+        print(f"Configured chat ID: {target_chat_id}")
+        print(f"Configured chat name: {chat_name}")
+        print(f"Configured chat type: {chat_type}")
+        print("Telegram access check: successful")
+
         me = await client.get_me()
         username = getattr(me, "username", None)
         if username:
