@@ -136,12 +136,14 @@ def overview(
 # 4. COMPANY-WISE ANALYTICS
 # ============================================================
 
+
 @router.get("/company/{company_id}")
 def company_analytics(
     company_id: int,
     db: Session = Depends(get_db)
 ):
 
+    # Find company
     company = db.query(
         Company
     ).filter(
@@ -149,38 +151,54 @@ def company_analytics(
     ).first()
 
     if not company:
-
         return {
             "error": "Company not found"
         }
 
+    # Find placement drives for this company
     drives = db.query(
         PlacementDrive
     ).filter(
         PlacementDrive.company_id == company_id
+    ).order_by(
+        PlacementDrive.id.desc()
     ).all()
 
-    drive_ids = [
-        drive.id
-        for drive in drives
-    ]
-
-    if not drive_ids:
-
+    if not drives:
         return {
             "company": company.name,
+            "industry": company.industry,
+            "website": company.website,
             "placement_drives": 0,
             "questions": 0,
-            "topics": []
+            "topics": [],
+            "recruitment_date": None,
+            "job_role": None,
+            "number_of_rounds": None,
+            "difficulty": None,
+            "eligibility": None,
+            "rounds": [],
+            "frequent_questions": []
         }
+
+    # Use the latest drive for the company
+    drive = drives[0]
+
+    # --------------------------------------------------------
+    # Questions
+    # --------------------------------------------------------
 
     questions = db.query(
         Question
     ).filter(
-        Question.placement_drive_id.in_(
-            drive_ids
-        )
+        Question.placement_drive_id == drive.id
+    ).order_by(
+        Question.occurrence_count.desc()
     ).all()
+
+    # --------------------------------------------------------
+    # Topics
+    # --------------------------------------------------------
 
     topic_data = {}
 
@@ -199,7 +217,6 @@ def company_analytics(
             continue
 
         if topic.name not in topic_data:
-
             topic_data[topic.name] = {
                 "topic": topic.name,
                 "category": topic.category,
@@ -209,18 +226,102 @@ def company_analytics(
         topic_data[
             topic.name
         ]["occurrence_count"] += (
-            question.occurrence_count
+            question.occurrence_count or 0
         )
+
+    # --------------------------------------------------------
+    # Recruitment rounds
+    # --------------------------------------------------------
+
+    rounds = db.query(
+        RecruitmentRound
+    ).filter(
+        RecruitmentRound.placement_drive_id == drive.id
+    ).order_by(
+        RecruitmentRound.round_number
+    ).all()
+
+    round_data = []
+
+    for round_item in rounds:
+
+        round_data.append({
+            "round_number": round_item.round_number,
+            "round_type": round_item.round_type,
+            "description": round_item.description,
+            "difficulty": round_item.difficulty
+        })
+
+    # --------------------------------------------------------
+    # Eligibility
+    # --------------------------------------------------------
+
+    eligibility = db.query(
+        EligibilityCriteria
+    ).filter(
+        EligibilityCriteria.placement_drive_id == drive.id
+    ).order_by(
+        EligibilityCriteria.id.desc()
+    ).first()
+
+    eligibility_data = None
+
+    if eligibility:
+
+        eligibility_data = {
+            "minimum_cgpa": eligibility.minimum_cgpa,
+            "maximum_backlogs": eligibility.maximum_backlogs,
+            "branch_eligibility": eligibility.branch_eligibility,
+            "other_criteria": eligibility.other_criteria
+        }
+
+    # --------------------------------------------------------
+    # Frequently asked questions
+    # --------------------------------------------------------
+
+    question_data = []
+
+    for question in questions:
+
+        question_data.append({
+            "id": question.id,
+            "question": question.question_text,
+            "occurrence_count": question.occurrence_count,
+            "difficulty": question.difficulty,
+            "confidence_score": question.confidence_score,
+            "verification_status": question.verification_status,
+            "source_message_id": question.source_message_id
+        })
+
+    # --------------------------------------------------------
+    # Complete company response
+    # --------------------------------------------------------
 
     return {
         "company": company.name,
+        "industry": company.industry,
+        "website": company.website,
+
         "placement_drives": len(drives),
         "questions": len(questions),
+
+        "recruitment_date": drive.recruitment_date,
+        "year": drive.year,
+        "job_role": drive.job_role,
+        "number_of_rounds": drive.number_of_rounds,
+        "difficulty": drive.overall_difficulty,
+
+        "eligibility": eligibility_data,
+
+        "rounds": round_data,
+
         "topics": sorted(
             topic_data.values(),
             key=lambda x: x["occurrence_count"],
             reverse=True
-        )
+        ),
+
+        "frequent_questions": question_data
     }
 
 

@@ -9,6 +9,7 @@ from routes.drives import router as drive_router
 from routes.messages import router as message_router
 from routes.analytics import router as analytics_router
 from routes.verifications import router as verification_router
+from routes.auth import router as auth_router
 
 app = FastAPI(
     title="Placement Intelligence and Feedback Analytics System",
@@ -42,6 +43,7 @@ app.include_router(drive_router)
 app.include_router(message_router)
 app.include_router(analytics_router)
 app.include_router(verification_router)
+app.include_router(auth_router)
 
 @app.get("/")
 def root():

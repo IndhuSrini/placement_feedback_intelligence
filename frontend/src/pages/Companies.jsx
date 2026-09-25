@@ -1,104 +1,278 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Search } from 'lucide-react'
-import CompanyCard from '../components/CompanyCard'
-import EmptyState from '../components/EmptyState'
-import ErrorState from '../components/ErrorState'
-import LoadingState from '../components/LoadingState'
-import { fetchCompanies, fetchCompanyAnalytics } from '../services/api'
+import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import {
+Building2,
+ExternalLink,
+Search,
+ArrowRight,
+BriefcaseBusiness,
+RefreshCw,
+Sparkles,
+FileDown,
+} from "lucide-react";
 
-const Companies = ({ globalSearch }) => {
-  const [companies, setCompanies] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
+const API = "/api";
 
-  useEffect(() => {
-    const loadCompanies = async () => {
-      try {
-        setLoading(true)
-        setError('')
+const TEST_COMPANIES = [
+"Live Verify 06ef0be6",
+"Live Verify Final 50a02b1d",
+"Analytics Verify bf92b8a2",
+];
 
-        const companiesResponse = await fetchCompanies()
-        const companyData = companiesResponse.data || []
+function Companies() {
+const [companies, setCompanies] = useState([]);
+const [search, setSearch] = useState("");
+const [loading, setLoading] = useState(true);
+const [error, setError] = useState("");
 
-        const enriched = await Promise.all(
-          companyData.map(async (company) => {
-            try {
-              const analyticsResponse = await fetchCompanyAnalytics(company.id)
-              const analytics = analyticsResponse.data || {}
-              return {
-                ...company,
-                placement_drives: analytics.placement_drives ?? 0,
-                questions: analytics.questions ?? 0,
-                topics: Array.isArray(analytics.topics) ? analytics.topics.length : 0,
-                eligibility_summary: analytics.eligibility_summary || 'Eligibility details not available'
-              }
-            } catch {
-              return {
-                ...company,
-                placement_drives: 0,
-                questions: 0,
-                topics: 0,
-                eligibility_summary: 'Eligibility details not available'
-              }
-            }
-          })
-        )
+const loadCompanies = async () => {
+try {
+setLoading(true);
+setError("");
 
-        setCompanies(enriched)
-      } catch (err) {
-        setError('Unable to load companies. Please check that the backend is running.')
-      } finally {
-        setLoading(false)
-      }
-    }
 
-    loadCompanies()
-  }, [])
+  const response = await fetch(`${API}/companies/`);
 
-  const filteredCompanies = useMemo(() => {
-    const query = (globalSearch || '').trim().toLowerCase()
+  if (!response.ok) {
+    throw new Error(`Failed to load companies: ${response.status}`);
+  }
 
-    if (!query) return companies
+  const data = await response.json();
 
-    return companies.filter((company) =>
-      (company.name || '').toLowerCase().includes(query)
-    )
-  }, [companies, globalSearch])
+  const cleanCompanies = Array.isArray(data)
+    ? data.filter((company) => !TEST_COMPANIES.includes(company.name))
+    : [];
 
-  if (loading) return <LoadingState message="Loading company intelligence..." />
-  if (error) return <ErrorState message={error} />
-
-  return (
-    <div className="page-shell container">
-      <div className="inner-page-header">
-        <div>
-          <p className="section-kicker">Companies</p>
-          <h1>Explore Companies</h1>
-          <p className="page-intro">
-            Explore placement feedback, eligibility information, frequently discussed topics, and interview questions company by company.
-          </p>
-        </div>
-      </div>
-
-      <div className="search-panel">
-        <div className="search-box">
-          <Search size={16} />
-          <input
-            type="text"
-            value={globalSearch}
-            readOnly
-            placeholder="Search companies using the global header"
-          />
-        </div>
-      </div>
-
-      <div className="company-grid">
-        {filteredCompanies.length > 0 ? filteredCompanies.map((company) => (
-          <CompanyCard key={company.id} company={company} />
-        )) : <EmptyState title="No companies found" message="Try updating your search or return later for more placement data." />}
-      </div>
-    </div>
-  )
+  setCompanies(cleanCompanies);
+} catch (err) {
+  setError(err.message || "Unable to load companies.");
+} finally {
+  setLoading(false);
 }
 
-export default Companies
+
+};
+
+useEffect(() => {
+loadCompanies();
+}, []);
+
+const filteredCompanies = useMemo(() => {
+const value = search.trim().toLowerCase();
+
+
+if (!value) {
+  return companies;
+}
+
+return companies.filter((company) => {
+  const name = company.name || "";
+  const industry = company.industry || "";
+
+  return (
+    name.toLowerCase().includes(value) ||
+    industry.toLowerCase().includes(value)
+  );
+});
+
+
+}, [companies, search]);
+
+return ( <main className="companies-page"> <div className="companies-container">
+
+
+    <section className="companies-header">
+      <div className="companies-heading">
+        <div className="companies-eyebrow">
+          <Sparkles size={14} />
+          Placement Directory
+        </div>
+
+        <h1>Explore Companies</h1>
+
+        <p>
+          Browse placement companies and explore their recruitment
+          details, interview rounds, technical topics, and frequently
+          asked questions.
+        </p>
+      </div>
+
+      <button
+        type="button"
+        className="companies-refresh"
+        onClick={loadCompanies}
+        disabled={loading}
+      >
+        <RefreshCw
+          size={16}
+          className={loading ? "companies-spin" : ""}
+        />
+        Refresh
+      </button>
+    </section>
+
+    <section className="companies-overview">
+      <div className="companies-overview-icon">
+        <Building2 size={22} />
+      </div>
+
+      <div>
+        <span>Available Companies</span>
+        <strong>{companies.length}</strong>
+      </div>
+
+      <div className="companies-overview-divider" />
+
+      <div className="companies-overview-text">
+        <BriefcaseBusiness size={17} />
+        <span>Placement opportunities collected from feedback</span>
+      </div>
+    </section>
+
+    <section className="companies-toolbar">
+      <div className="companies-search">
+        <Search size={18} />
+
+        <input
+          type="text"
+          placeholder="Search company or industry..."
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+        />
+
+        {search && (
+          <button
+            type="button"
+            className="companies-clear"
+            onClick={() => setSearch("")}
+          >
+            Clear
+          </button>
+        )}
+      </div>
+
+      <div className="companies-count">
+        Showing <strong>{filteredCompanies.length}</strong> companies
+      </div>
+    </section>
+
+    {error && (
+      <section className="companies-error">
+        <div>
+          <strong>Unable to load companies</strong>
+          <p>{error}</p>
+        </div>
+
+        <button type="button" onClick={loadCompanies}>
+          Try Again
+        </button>
+      </section>
+    )}
+
+    {loading && !error && (
+      <section className="companies-grid">
+        {[1, 2, 3, 4, 5, 6].map((item) => (
+          <div className="company-skeleton" key={item}>
+            <div className="skeleton-logo" />
+            <div className="skeleton-line large" />
+            <div className="skeleton-line" />
+            <div className="skeleton-button" />
+          </div>
+        ))}
+      </section>
+    )}
+
+    {!loading && !error && filteredCompanies.length === 0 && (
+      <section className="companies-empty">
+        <div className="companies-empty-icon">
+          <Search size={25} />
+        </div>
+
+        <h2>No companies found</h2>
+
+        <p>
+          Try searching with another company name or industry.
+        </p>
+
+        {search && (
+          <button
+            type="button"
+            onClick={() => setSearch("")}
+          >
+            Clear Search
+          </button>
+        )}
+      </section>
+    )}
+
+    {!loading && !error && filteredCompanies.length > 0 && (
+      <section className="companies-grid">
+        {filteredCompanies.map((company, index) => (
+          <article className="company-card" key={company.id}>
+
+            <div className="company-card-top">
+              <div className="company-logo">
+                {company.name
+                  ? company.name.charAt(0).toUpperCase()
+                  : "C"}
+              </div>
+
+              <span className="company-badge">
+                Company {index + 1}
+              </span>
+            </div>
+
+            <div className="company-card-content">
+              <h2>{company.name || "Unknown Company"}</h2>
+
+              <div className="company-industry">
+                <Building2 size={14} />
+                <span>
+                  {company.industry || "Information Technology"}
+                </span>
+              </div>
+            </div>
+
+           <div className="company-card-footer">
+  <Link
+    to={`/companies/${company.id}`}
+    className="company-view-button"
+  >
+    Explore Company
+    <ArrowRight size={15} />
+  </Link>
+
+  <Link
+    to={`/companies/${company.id}?print=true`}
+    className="company-report-button"
+    title="Download company report"
+  >
+    <FileDown size={15} />
+    Report
+  </Link>
+
+  {company.website && (
+    <a
+      href={company.website}
+      target="_blank"
+      rel="noreferrer"
+      className="company-website"
+      title="Open company website"
+    >
+      <ExternalLink size={15} />
+    </a>
+  )}
+</div>
+
+          </article>
+        ))}
+      </section>
+    )}
+
+  </div>
+</main>
+
+);
+}
+
+export default Companies;

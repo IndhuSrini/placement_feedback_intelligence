@@ -6,7 +6,11 @@ from models import RawMessage, PlacementDrive
 from schemas import RawMessageCreate, RawMessageResponse
 
 from nlp.processor import process_message
-from nlp.storage import store_extracted_information
+from nlp.storage import (
+    get_or_create_company,
+    get_or_create_placement_drive_for_message,
+    store_extracted_information,
+)
 
 
 router = APIRouter(
@@ -29,7 +33,7 @@ def create_message(
 ):
 
     # --------------------------------------------------------
-    # Validate placement drive if provided
+    # Validate placement drive if explicitly provided
     # --------------------------------------------------------
 
     if message.placement_drive_id is not None:
@@ -60,9 +64,7 @@ def create_message(
     )
 
     db.add(new_message)
-
     db.commit()
-
     db.refresh(new_message)
 
     return new_message
@@ -110,51 +112,112 @@ def process_raw_message(
     ).first()
 
     if not message:
-
         raise HTTPException(
             status_code=404,
             detail="Message not found"
         )
 
     # --------------------------------------------------------
-    # Check placement drive
-    # --------------------------------------------------------
-
-    if message.placement_drive_id is None:
-
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "This message is not associated with a "
-                "placement drive. Please provide "
-                "placement_drive_id first."
-            )
-        )
-
-    # --------------------------------------------------------
-    # Find the correct placement drive
-    # --------------------------------------------------------
-
-    placement_drive = db.query(
-        PlacementDrive
-    ).filter(
-        PlacementDrive.id == message.placement_drive_id
-    ).first()
-
-    if not placement_drive:
-
-        raise HTTPException(
-            status_code=404,
-            detail="Placement drive not found"
-        )
-
-    # --------------------------------------------------------
-    # Run NLP processing
+    # ALWAYS RUN NLP FIRST
+    #
+    # This is important because the company may have been
+    # unknown when the message was originally processed.
     # --------------------------------------------------------
 
     result = process_message(
         message.message_text
     )
+
+    extracted = result.get(
+        "extracted_information",
+        {}
+    ) or {}
+
+    # --------------------------------------------------------
+    # Resolve company from the NEW extractor result
+    # --------------------------------------------------------
+
+    company_name = extracted.get("company")
+
+    if company_name:
+
+        company = get_or_create_company(
+            db,
+            company_name
+        )
+
+        # ----------------------------------------------------
+        # Find an existing drive belonging to this company
+        # ----------------------------------------------------
+
+        placement_drive = db.query(
+            PlacementDrive
+        ).filter(
+            PlacementDrive.company_id == company.id
+        ).order_by(
+            PlacementDrive.id.desc()
+        ).first()
+
+        # ----------------------------------------------------
+        # Create a drive if the company has no drive yet
+        # ----------------------------------------------------
+
+        if placement_drive is None:
+
+            placement_drive = get_or_create_placement_drive_for_message(
+                db=db,
+                company_name=company.name,
+                message_text=message.message_text
+            )
+
+    else:
+
+        # ----------------------------------------------------
+        # Fallback:
+        # If NLP cannot identify a company, preserve an
+        # explicitly supplied placement drive.
+        # ----------------------------------------------------
+
+        placement_drive = None
+
+        if message.placement_drive_id is not None:
+
+            placement_drive = db.query(
+                PlacementDrive
+            ).filter(
+                PlacementDrive.id == message.placement_drive_id
+            ).first()
+
+        if placement_drive is None:
+
+            unknown_company = get_or_create_company(
+                db,
+                "Unknown Company"
+            )
+
+            placement_drive = db.query(
+                PlacementDrive
+            ).filter(
+                PlacementDrive.company_id == unknown_company.id
+            ).order_by(
+                PlacementDrive.id.desc()
+            ).first()
+
+            if placement_drive is None:
+
+                placement_drive = get_or_create_placement_drive_for_message(
+                    db=db,
+                    company_name="Unknown Company",
+                    message_text=message.message_text
+                )
+
+    # --------------------------------------------------------
+    # Update the message with the CORRECT placement drive
+    # --------------------------------------------------------
+
+    message.placement_drive_id = placement_drive.id
+
+    db.flush()
 
     # --------------------------------------------------------
     # Store extracted information
@@ -163,7 +226,7 @@ def process_raw_message(
     store_extracted_information(
         db=db,
         placement_drive_id=placement_drive.id,
-        information=result["extracted_information"],
+        information=extracted,
         source_message_id=message.id
     )
 

@@ -11,7 +11,9 @@ def clean_message(text: str) -> str:
     # Remove URLs
     text = re.sub(r"https?://\S+", "", text)
 
-    # Remove excessive whitespace
-    text = re.sub(r"\s+", " ", text)
+    # Preserve natural Telegram line breaks for question lists while collapsing repeated spaces.
+    text = re.sub(r"[ \t]*\n[ \t]*", "\n", text)
+    text = re.sub(r"\n{2,}", "\n\n", text)
+    text = re.sub(r"[ \t]+", " ", text)
 
     return text
