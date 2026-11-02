@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -7,11 +9,11 @@ from schemas import RawMessageCreate, RawMessageResponse
 
 from nlp.processor import process_message
 from nlp.storage import (
-    get_or_create_company,
     get_or_create_placement_drive_for_message,
     store_extracted_information,
 )
 
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/messages",
@@ -117,134 +119,75 @@ def process_raw_message(
             detail="Message not found"
         )
 
-    # --------------------------------------------------------
-    # ALWAYS RUN NLP FIRST
-    #
-    # This is important because the company may have been
-    # unknown when the message was originally processed.
-    # --------------------------------------------------------
+    try:
+        result = process_message(message.message_text)
+        extracted = result.get("extracted_information") or {}
+        company_name = extracted.get("company")
 
-    result = process_message(
-        message.message_text
-    )
-
-    extracted = result.get(
-        "extracted_information",
-        {}
-    ) or {}
-
-    # --------------------------------------------------------
-    # Resolve company from the NEW extractor result
-    # --------------------------------------------------------
-
-    company_name = extracted.get("company")
-
-    if company_name:
-
-        company = get_or_create_company(
-            db,
-            company_name
-        )
-
-        # ----------------------------------------------------
-        # Find an existing drive belonging to this company
-        # ----------------------------------------------------
-
-        placement_drive = db.query(
-            PlacementDrive
-        ).filter(
-            PlacementDrive.company_id == company.id
-        ).order_by(
-            PlacementDrive.id.desc()
-        ).first()
-
-        # ----------------------------------------------------
-        # Create a drive if the company has no drive yet
-        # ----------------------------------------------------
-
-        if placement_drive is None:
-
+        if company_name:
             placement_drive = get_or_create_placement_drive_for_message(
                 db=db,
-                company_name=company.name,
-                message_text=message.message_text
+                company_name=company_name,
+                message_text=message.message_text,
             )
-
-    else:
-
-        # ----------------------------------------------------
-        # Fallback:
-        # If NLP cannot identify a company, preserve an
-        # explicitly supplied placement drive.
-        # ----------------------------------------------------
-
-        placement_drive = None
-
-        if message.placement_drive_id is not None:
-
-            placement_drive = db.query(
-                PlacementDrive
-            ).filter(
-                PlacementDrive.id == message.placement_drive_id
-            ).first()
-
-        if placement_drive is None:
-
-            unknown_company = get_or_create_company(
-                db,
-                "Unknown Company"
-            )
-
-            placement_drive = db.query(
-                PlacementDrive
-            ).filter(
-                PlacementDrive.company_id == unknown_company.id
-            ).order_by(
-                PlacementDrive.id.desc()
-            ).first()
+        else:
+            placement_drive = None
+            if message.placement_drive_id is not None:
+                placement_drive = db.query(PlacementDrive).filter(
+                    PlacementDrive.id == message.placement_drive_id
+                ).first()
 
             if placement_drive is None:
-
-                placement_drive = get_or_create_placement_drive_for_message(
-                    db=db,
-                    company_name="Unknown Company",
-                    message_text=message.message_text
+                error = "Company not detected; no placement drive could be linked."
+                logger.warning(
+                    "Unable to process RawMessage %s: %s",
+                    message.id,
+                    error,
+                )
+                raise HTTPException(
+                    status_code=422,
+                    detail={
+                        "status": "failed",
+                        "message_id": message.id,
+                        "processed": False,
+                        "error": error,
+                    },
                 )
 
-    # --------------------------------------------------------
-    # Update the message with the CORRECT placement drive
-    # --------------------------------------------------------
+        if placement_drive is None:
+            raise RuntimeError("Placement-drive resolution returned no drive.")
 
-    message.placement_drive_id = placement_drive.id
+        message.placement_drive_id = placement_drive.id
+        db.flush()
 
-    db.flush()
+        store_extracted_information(
+            db=db,
+            placement_drive_id=placement_drive.id,
+            information=extracted,
+            source_message_id=message.id,
+        )
 
-    # --------------------------------------------------------
-    # Store extracted information
-    # --------------------------------------------------------
+        message.processed = True
+        db.commit()
 
-    store_extracted_information(
-        db=db,
-        placement_drive_id=placement_drive.id,
-        information=extracted,
-        source_message_id=message.id
-    )
-
-    # --------------------------------------------------------
-    # Mark message as processed
-    # --------------------------------------------------------
-
-    message.processed = True
-
-    db.commit()
-
-    # --------------------------------------------------------
-    # Return result
-    # --------------------------------------------------------
-
-    return {
-        "message_id": message.id,
-        "processed": True,
-        "placement_drive_id": placement_drive.id,
-        "nlp_result": result
-    }
+        return {
+            "message_id": message.id,
+            "processed": True,
+            "placement_drive_id": placement_drive.id,
+            "nlp_result": result,
+        }
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as exc:
+        db.rollback()
+        logger.exception("Failed processing RawMessage %s", message_id)
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "status": "failed",
+                "message_id": message_id,
+                "processed": False,
+                "error": "Message processing failed while linking or storing extracted data.",
+            },
+        ) from exc

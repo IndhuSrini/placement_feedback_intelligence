@@ -1,5 +1,6 @@
 import re
 
+from fastapi import HTTPException
 import pytest
 from sqlalchemy import create_engine, func
 from sqlalchemy.orm import sessionmaker
@@ -161,6 +162,20 @@ def test_company_and_round_rule_regressions():
     assert any("friendly" in text.lower() or "resume" in text.lower() for text in info["feedback"])
     assert any("what is oop" in q.lower() for q in info["questions"])
     assert any("abstract class" in q.lower() for q in info["questions"])
+
+
+@pytest.mark.parametrize(
+    "text,expected_company",
+    [
+        ("company amazon", "Amazon"),
+        ("Company Name: Zentropy", "Zentropy"),
+        ("Company: LTIMindtree", "LTIMindtree"),
+    ],
+)
+def test_company_name_common_formats(text, expected_company):
+    information = extract_information(clean_message(text))
+
+    assert information["company"] == expected_company
 
 
 def test_round_number_is_explicit_only():
@@ -595,5 +610,109 @@ def test_process_raw_message_reuses_existing_matching_drive_when_metadata_is_exp
     assert response["placement_drive_id"] == drive.id
     assert raw.placement_drive_id == drive.id
     assert session.query(Question).filter_by(placement_drive_id=drive.id).count() >= 0
+
+    session.close()
+
+
+def test_process_raw_message_does_not_process_when_company_is_missing(caplog):
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(bind=engine)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+
+    raw = RawMessage(
+        message_id="missing-company",
+        source="telegram",
+        sender="student",
+        message_text="Interview experience was useful.",
+        processed=False,
+    )
+    session.add(raw)
+    session.commit()
+    original_text = raw.message_text
+
+    with pytest.raises(HTTPException) as error:
+        process_raw_message(raw.id, db=session)
+
+    session.refresh(raw)
+    assert error.value.status_code == 422
+    assert error.value.detail["status"] == "failed"
+    assert error.value.detail["processed"] is False
+    assert raw.processed is False
+    assert raw.placement_drive_id is None
+    assert raw.message_text == original_text
+    assert session.query(Company).count() == 0
+    assert session.query(PlacementDrive).count() == 0
+    assert "Company not detected" in caplog.text
+
+    session.close()
+
+
+def test_process_raw_message_rolls_back_linking_when_storage_fails(monkeypatch, caplog):
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(bind=engine)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+
+    raw = RawMessage(
+        message_id="storage-failure",
+        source="telegram",
+        sender="student",
+        message_text="Company: Zentropy\nRole: Software Engineer\nInterview was useful.",
+        processed=False,
+    )
+    session.add(raw)
+    session.commit()
+    original_text = raw.message_text
+
+    def fail_storage(**kwargs):
+        assert kwargs["placement_drive_id"]
+        assert kwargs["information"]["company"] == "Zentropy"
+        raise RuntimeError("simulated storage failure")
+
+    monkeypatch.setattr("routes.messages.store_extracted_information", fail_storage)
+
+    with pytest.raises(HTTPException) as error:
+        process_raw_message(raw.id, db=session)
+
+    session.refresh(raw)
+    assert error.value.status_code == 500
+    assert error.value.detail["status"] == "failed"
+    assert error.value.detail["processed"] is False
+    assert raw.processed is False
+    assert raw.placement_drive_id is None
+    assert raw.message_text == original_text
+    assert session.query(Company).count() == 0
+    assert session.query(PlacementDrive).count() == 0
+    assert "simulated storage failure" in caplog.text
+
+    session.close()
+
+
+def test_process_raw_message_retry_reuses_company_and_placement_drive():
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(bind=engine)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+
+    raw = RawMessage(
+        message_id="retry-message",
+        source="telegram",
+        sender="student",
+        message_text="Company: LTIMindtree\nRole: Software Engineer\nInterview was useful.",
+        processed=False,
+    )
+    session.add(raw)
+    session.commit()
+    original_text = raw.message_text
+
+    first_response = process_raw_message(raw.id, db=session)
+    second_response = process_raw_message(raw.id, db=session)
+
+    assert first_response["placement_drive_id"] == second_response["placement_drive_id"]
+    assert session.query(Company).filter_by(name="LTIMindtree").count() == 1
+    assert session.query(PlacementDrive).count() == 1
+    assert raw.processed is True
+    assert raw.message_text == original_text
 
     session.close()

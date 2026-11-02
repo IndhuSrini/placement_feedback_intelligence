@@ -13,10 +13,12 @@ FileDown,
 
 const API = "/api";
 
+import { getCompanyWebsite } from "../utils/companyWebsites";
+
 const TEST_COMPANIES = [
-"Live Verify 06ef0be6",
-"Live Verify Final 50a02b1d",
-"Analytics Verify bf92b8a2",
+  "Live Verify 06ef0be6",
+  "Live Verify Final 50a02b1d",
+  "Analytics Verify bf92b8a2",
 ];
 
 function Companies() {
@@ -234,35 +236,41 @@ return ( <main className="companies-page"> <div className="companies-container">
             </div>
 
            <div className="company-card-footer">
-  <Link
-    to={`/companies/${company.id}`}
-    className="company-view-button"
-  >
-    Explore Company
-    <ArrowRight size={15} />
-  </Link>
+              <Link
+                to={`/companies/${company.id}`}
+                className="company-view-button"
+              >
+                <span>Explore Company</span>
+                <ArrowRight size={15} />
+              </Link>
 
-  <Link
-    to={`/companies/${company.id}?print=true`}
-    className="company-report-button"
-    title="Download company report"
-  >
-    <FileDown size={15} />
-    Report
-  </Link>
+              <Link
+                to={`/companies/${company.id}?print=true`}
+                className="company-report-button"
+                title="Download concise company summary report"
+              >
+                <FileDown size={15} />
+                <span>Report</span>
+              </Link>
 
-  {company.website && (
-    <a
-      href={company.website}
-      target="_blank"
-      rel="noreferrer"
-      className="company-website"
-      title="Open company website"
-    >
-      <ExternalLink size={15} />
-    </a>
-  )}
-</div>
+              {getCompanyWebsite(company) ? (
+                <a
+                  href={getCompanyWebsite(company)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="company-website-button"
+                  title={`Visit ${company.name || "company"} official website`}
+                >
+                  <ExternalLink size={14} />
+                  <span>Visit Website</span>
+                </a>
+              ) : (
+                <span className="company-website-disabled" title="No official website link available">
+                  <ExternalLink size={14} />
+                  <span>Website Unavailable</span>
+                </span>
+              )}
+            </div>
 
           </article>
         ))}

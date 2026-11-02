@@ -249,6 +249,8 @@ def normalize_company_name(name: str):
         if re.fullmatch(r"[A-Za-z0-9&.-]+", part):
             if part.isupper() and len(part) <= 5:
                 fixed.append(part)
+            elif any(character.isupper() for character in part[1:]):
+                fixed.append(part)
             else:
                 fixed.append(
                     part[0].upper() + part[1:].lower()
@@ -300,9 +302,12 @@ def extract_company_name(text: str):
         return None
 
     patterns = [
-        r"(?:^|\n)\s*\d+\.\s*company\s*[:\-]\s*([^\n]+)",
-        r"(?:^|\n)\s*company\s*[:\-]\s*([^\n]+)",
-        r"\bcompany\s*[:\-]\s*([^\n]+)",
+        r"(?:^|\n)\s*\d+\.\s*company(?:[ \t]+name)?"
+        r"(?:[ \t]*:[ \t]*|[ \t]+-[ \t]*|[ \t]+)([^\n]+)",
+        r"(?:^|\n)\s*company(?:[ \t]+name)?"
+        r"(?:[ \t]*:[ \t]*|[ \t]+-[ \t]*|[ \t]+)([^\n]+)",
+        r"\bcompany(?:[ \t]+name)?"
+        r"(?:[ \t]*:[ \t]*|[ \t]+-[ \t]*|[ \t]+)([^\n]+)",
     ]
 
     for pattern in patterns:
