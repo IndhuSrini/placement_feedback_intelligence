@@ -37,6 +37,7 @@ import {
 
 import { getCompanyWebsite } from "../utils/companyWebsites";
 import { generateCompanyPdfReport } from "../utils/pdfGenerator";
+import InterviewPreparationRoadmap from "../components/InterviewPreparationRoadmap";
 
 const API = "/api";
 
@@ -138,7 +139,8 @@ function DifficultyTooltip({ active, payload }) {
 
 function CompanyDetails() {
   const { companyId } = useParams();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const selectedDriveId = searchParams.get("drive_id") || "";
 
   const [company, setCompany] = useState(null);
   const [details, setDetails] = useState(null);
@@ -160,7 +162,11 @@ function CompanyDetails() {
         setError("");
 
         const detailsResponse = await fetch(
-          `${API}/analytics/company/${companyId}`
+          `${API}/analytics/company/${companyId}${
+            selectedDriveId
+              ? `?drive_id=${encodeURIComponent(selectedDriveId)}`
+              : ""
+          }`
         );
 
         if (!detailsResponse.ok) {
@@ -194,7 +200,7 @@ function CompanyDetails() {
         setRefreshing(false);
       }
     },
-    [companyId]
+    [companyId, selectedDriveId]
   );
 
   useEffect(() => {
@@ -244,6 +250,7 @@ function CompanyDetails() {
     return [...data.topics]
       .filter((t) => t && (t.topic || t.name))
       .map((t) => ({
+        id: t.id,
         topic: t.topic || t.name,
         category: t.category || "Technical",
         occurrence_count: Number(t.occurrence_count || t.count || 1),
@@ -532,6 +539,43 @@ function CompanyDetails() {
             </div>
           </div>
         </section>
+
+        {Array.isArray(data.available_drives) &&
+          data.available_drives.length > 1 && (
+            <section className="company-drive-selector">
+              <label htmlFor="company-drive-select">Placement drive</label>
+              <select
+                id="company-drive-select"
+                value={String(data.drive_id ?? "")}
+                onChange={(event) => {
+                  const nextParams = new URLSearchParams(searchParams);
+                  nextParams.set("drive_id", event.target.value);
+                  setSearchParams(nextParams);
+                }}
+              >
+                {data.available_drives.map((drive) => {
+                  const label = [
+                    drive.job_role || "Role not specified",
+                    drive.batch ? `Batch ${drive.batch}` : null,
+                    drive.year,
+                    drive.package ? `Package ${drive.package}` : null,
+                    drive.recruitment_date
+                      ? formatDate(drive.recruitment_date)
+                      : null,
+                    `Drive #${drive.id}`,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ");
+
+                  return (
+                    <option key={drive.id} value={String(drive.id)}>
+                      {label}
+                    </option>
+                  );
+                })}
+              </select>
+            </section>
+          )}
 
         {/* 2. PLACEMENT OVERVIEW STATS */}
         <section className="details-stats-grid">
@@ -852,6 +896,19 @@ function CompanyDetails() {
             </div>
           )}
         </section>
+
+        <InterviewPreparationRoadmap
+          key={`${companyId}:${data.drive_id ?? "none"}`}
+          companyId={companyId}
+          driveId={data.drive_id}
+          companyName={companyName}
+          jobRole={data.job_role}
+          rounds={data.rounds}
+          topics={data.topics}
+          preparationTopics={data.preparation_topics}
+          questions={data.frequent_questions}
+          eligibility={data.eligibility}
+        />
 
         {/* 5. FREQUENTLY ASKED QUESTIONS */}
         <section className="details-section questions-section">

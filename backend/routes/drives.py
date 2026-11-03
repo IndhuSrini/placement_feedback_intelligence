@@ -32,7 +32,9 @@ def create_placement_drive(
         company_id=drive.company_id,
         recruitment_date=drive.recruitment_date,
         year=drive.year,
+        batch=drive.batch,
         job_role=drive.job_role,
+        package=drive.package,
         number_of_rounds=drive.number_of_rounds,
         overall_difficulty=drive.overall_difficulty
     )

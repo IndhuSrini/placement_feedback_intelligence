@@ -12,9 +12,8 @@ if str(BACKEND_DIR) not in sys.path:
 load_dotenv(BACKEND_DIR / ".env")
 
 from database import SessionLocal
-from models import PlacementDrive, RawMessage
-from nlp.processor import process_message
-from nlp.storage import store_extracted_information
+from models import RawMessage
+from nlp.raw_message_processor import process_raw_message_record
 
 
 def process_single_message(db, raw_message: RawMessage):
@@ -22,36 +21,26 @@ def process_single_message(db, raw_message: RawMessage):
     if raw_message is None:
         raise ValueError("Raw message is missing.")
 
-    if raw_message.placement_drive_id is None:
-        raise ValueError(f"Message {raw_message.id} has no placement_drive_id assigned.")
-
-    placement_drive = (
-        db.query(PlacementDrive)
-        .filter(PlacementDrive.id == raw_message.placement_drive_id)
+    raw_message = (
+        db.query(RawMessage)
+        .with_for_update()
+        .populate_existing()
+        .filter(RawMessage.id == raw_message.id)
         .first()
     )
-    if placement_drive is None:
-        raise ValueError(
-            f"Message {raw_message.id} references missing placement_drive_id {raw_message.placement_drive_id}."
+    if raw_message is None:
+        raise ValueError("Raw message no longer exists.")
+
+    try:
+        result = process_raw_message_record(
+            db=db,
+            raw_message_id=raw_message.id,
         )
-
-    if raw_message.message_text is None or not str(raw_message.message_text).strip():
-        raise ValueError(f"Message {raw_message.id} has no message text.")
-
-    result = process_message(raw_message.message_text)
-    information = result.get("extracted_information", {}) if isinstance(result, dict) else {}
-
-    store_extracted_information(
-        db=db,
-        placement_drive_id=placement_drive.id,
-        information=information,
-        source_message_id=raw_message.id,
-    )
-
-    raw_message.processed = True
-    db.commit()
-
-    return result
+        db.commit()
+        return result
+    except Exception:
+        db.rollback()
+        raise
 
 
 def main() -> None:

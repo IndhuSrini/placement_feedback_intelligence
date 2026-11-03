@@ -13,61 +13,24 @@ if str(BACKEND_DIR) not in sys.path:
 load_dotenv(BACKEND_DIR / ".env")
 
 from database import SessionLocal
-from models import Company, PlacementDrive, RawMessage
-from nlp.processor import process_message
-from nlp.storage import store_extracted_information
+from models import RawMessage
+from nlp.raw_message_processor import process_raw_message_record
 from telegram.client import create_client, get_authorized_chat_ids
-from telegram.collector import _already_saved, prepare_raw_message_record
+from telegram.collector import (
+    _already_saved,
+    get_telegram_chat_id,
+    prepare_raw_message_record,
+)
 
 
-def get_or_create_company(db, company_name: str):
-    """Find an existing company or create it."""
-    company_name = company_name.strip()
-
-    company = (
-        db.query(Company)
-        .filter(Company.name.ilike(company_name))
-        .first()
+def process_new_raw_message(db, raw_message: RawMessage):
+    """Extract and store one new Telegram message atomically."""
+    response = process_raw_message_record(
+        db=db,
+        raw_message_id=raw_message.id,
     )
-
-    if company:
-        return company
-
-    company = Company(name=company_name)
-    db.add(company)
-    db.flush()
-
-    return company
-
-
-def get_or_create_placement_drive(db, company_id: int, info: dict):
-    """Find the latest drive for a company or create one."""
-    drive = (
-        db.query(PlacementDrive)
-        .filter(PlacementDrive.company_id == company_id)
-        .order_by(PlacementDrive.id.desc())
-        .first()
-    )
-
-    if drive is None:
-        drive = PlacementDrive(
-            company_id=company_id,
-            job_role=info.get("job_role"),
-            number_of_rounds=len(info.get("rounds", []))
-            if isinstance(info.get("rounds"), list)
-            else None,
-            overall_difficulty=(
-                info.get("difficulty", [None])[0]
-                if isinstance(info.get("difficulty"), list)
-                and info.get("difficulty")
-                else None
-            ),
-        )
-
-        db.add(drive)
-        db.flush()
-
-    return drive
+    result = response.get("nlp_result") or {}
+    return result.get("extracted_information") or {}
 
 
 async def main() -> None:
@@ -155,7 +118,11 @@ async def main() -> None:
             if not telegram_message_id:
                 continue
 
-            if _already_saved(db, telegram_message_id):
+            if _already_saved(
+                db,
+                telegram_message_id,
+                get_telegram_chat_id(message),
+            ):
                 duplicate_count += 1
                 continue
 
@@ -185,64 +152,14 @@ async def main() -> None:
 
         for raw_message in raw_messages:
             try:
-                result = process_message(raw_message.message_text)
-
-                info = result.get(
-                    "extracted_information",
-                    {},
-                ) or {}
-
-                # -------------------------------------------------
-                # Find the company extracted from THIS message
-                # -------------------------------------------------
-                company_name = info.get("company")
-
-                if company_name:
-                    company_name = str(company_name).strip()
-
-                    company = get_or_create_company(
-                        db,
-                        company_name,
-                    )
-
-                    # Record company in summary
-                    if company.name not in extracted_summary["companies"]:
-                        extracted_summary["companies"].append(
-                            company.name
-                        )
-
-                    # -------------------------------------------------
-                    # Find/create the correct drive for THIS company
-                    # -------------------------------------------------
-                    placement_drive = get_or_create_placement_drive(
-                        db=db,
-                        company_id=company.id,
-                        info=info,
-                    )
-
-                    # Link raw Telegram message to correct drive
-                    raw_message.placement_drive_id = placement_drive.id
-
-                    db.flush()
-
-                    # -------------------------------------------------
-                    # Store extracted NLP information under
-                    # THIS company's placement drive
-                    # -------------------------------------------------
-                    store_extracted_information(
-                        db=db,
-                        placement_drive_id=placement_drive.id,
-                        information=info,
-                        source_message_id=raw_message.id,
-                    )
-
-                else:
-                    print(
-                        f"Warning: company not detected for "
-                        f"RawMessage {raw_message.id}"
-                    )
+                with db.begin_nested():
+                    info = process_new_raw_message(db, raw_message)
 
                 processing_success += 1
+
+                company_name = info.get("company")
+                if company_name and company_name not in extracted_summary["companies"]:
+                    extracted_summary["companies"].append(company_name)
 
                 # -------------------------------------------------
                 # Summary information

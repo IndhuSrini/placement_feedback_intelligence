@@ -6,7 +6,8 @@ from sqlalchemy import (
     Float,
     Date,
     Boolean,
-    ForeignKey
+    ForeignKey,
+    UniqueConstraint,
 )
 
 from database import Base
@@ -51,7 +52,11 @@ class PlacementDrive(Base):
 
     year = Column(Integer)
 
+    batch = Column(String(50))
+
     job_role = Column(String(150))
+
+    package = Column(String(50))
 
     number_of_rounds = Column(Integer)
 
@@ -70,6 +75,8 @@ class RawMessage(Base):
     message_id = Column(String(100))
 
     source = Column(String(100))
+
+    source_chat_id = Column(String(100))
 
     sender = Column(String(150))
 
@@ -114,6 +121,22 @@ class EligibilityCriteria(Base):
     other_criteria = Column(Text)
 
 
+class EligibilitySourceMessage(Base):
+    __tablename__ = "eligibility_source_messages"
+
+    eligibility_id = Column(
+        Integer,
+        ForeignKey("eligibility_criteria.id"),
+        primary_key=True,
+    )
+
+    raw_message_id = Column(
+        Integer,
+        ForeignKey("raw_messages.id"),
+        primary_key=True,
+    )
+
+
 # ============================================================
 # RECRUITMENT ROUND
 # ============================================================
@@ -138,6 +161,22 @@ class RecruitmentRound(Base):
     description = Column(Text)
 
 
+class RecruitmentRoundSourceMessage(Base):
+    __tablename__ = "recruitment_round_source_messages"
+
+    round_id = Column(
+        Integer,
+        ForeignKey("recruitment_rounds.id"),
+        primary_key=True,
+    )
+
+    raw_message_id = Column(
+        Integer,
+        ForeignKey("raw_messages.id"),
+        primary_key=True,
+    )
+
+
 # ============================================================
 # TOPIC
 # ============================================================
@@ -153,6 +192,73 @@ class Topic(Base):
     )
 
     category = Column(String(100))
+
+
+class PlacementDriveTopic(Base):
+    __tablename__ = "placement_drive_topics"
+    __table_args__ = (
+        UniqueConstraint(
+            "placement_drive_id",
+            "topic_id",
+            "scope_key",
+            name="uq_placement_drive_topic_scope",
+        ),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    placement_drive_id = Column(
+        Integer,
+        ForeignKey("placement_drives.id"),
+        nullable=False,
+    )
+
+    topic_id = Column(
+        Integer,
+        ForeignKey("topics.id"),
+        nullable=False,
+    )
+
+    round_id = Column(
+        Integer,
+        ForeignKey("recruitment_rounds.id"),
+        nullable=True,
+    )
+
+    category = Column(String(100), nullable=False)
+
+    scope_key = Column(String(150), nullable=False)
+
+    source_message_id = Column(
+        Integer,
+        ForeignKey("raw_messages.id"),
+        nullable=True,
+    )
+
+
+class PlacementDriveTopicSourceMessage(Base):
+    __tablename__ = "placement_drive_topic_source_messages"
+    __table_args__ = (
+        UniqueConstraint(
+            "placement_drive_topic_id",
+            "raw_message_id",
+            name="uq_drive_topic_source_message",
+        ),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    placement_drive_topic_id = Column(
+        Integer,
+        ForeignKey("placement_drive_topics.id"),
+        nullable=False,
+    )
+
+    raw_message_id = Column(
+        Integer,
+        ForeignKey("raw_messages.id"),
+        nullable=False,
+    )
 
 
 # ============================================================
@@ -181,6 +287,7 @@ class Question(Base):
         ForeignKey("topics.id"),
         nullable=True
     )
+    preparation_category = Column(String(100))
     source_message_id = Column(
         Integer,
         ForeignKey("raw_messages.id"),
@@ -209,6 +316,22 @@ class Question(Base):
     verification_status = Column(
         String(50),
         default="unverified"
+    )
+
+
+class QuestionSourceMessage(Base):
+    __tablename__ = "question_source_messages"
+
+    question_id = Column(
+        Integer,
+        ForeignKey("questions.id"),
+        primary_key=True
+    )
+
+    raw_message_id = Column(
+        Integer,
+        ForeignKey("raw_messages.id"),
+        primary_key=True
     )
 
 

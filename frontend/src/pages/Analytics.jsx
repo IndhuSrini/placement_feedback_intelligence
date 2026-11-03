@@ -176,7 +176,10 @@ export default function Analytics() {
     ] = results;
 
     if (overviewRes.status === "fulfilled") setOverview(overviewRes.value);
-    if (topicsRes.status === "fulfilled") setTopicsRaw(topicsRes.value || []);
+   if (topicsRes.status === "fulfilled") {
+  console.log("TOPICS API DATA:", topicsRes.value);
+  setTopicsRaw(topicsRes.value || []);
+}
     if (categoriesRes.status === "fulfilled") setCategoriesRaw(categoriesRes.value || []);
     if (confidenceRes.status === "fulfilled") setConfidence(confidenceRes.value);
     if (questionsRes.status === "fulfilled") setQuestionsRaw(questionsRes.value || []);

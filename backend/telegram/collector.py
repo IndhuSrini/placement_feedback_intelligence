@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any, Dict, List, Optional
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from database import SessionLocal
@@ -15,6 +16,22 @@ from telegram.client import (
     create_client,
     get_authorized_chat_ids,
 )
+
+
+def get_telegram_chat_id(message: Any) -> Optional[str]:
+    chat_id = getattr(message, "chat_id", None)
+    if chat_id is not None:
+        return str(chat_id)
+
+    peer_id = getattr(message, "peer_id", None)
+    if peer_id is None:
+        return None
+
+    for attribute in ("channel_id", "chat_id", "user_id"):
+        value = getattr(peer_id, attribute, None)
+        if value is not None:
+            return str(value)
+    return None
 
 
 def prepare_raw_message_record(message: Any, placement_drive_id: Optional[int] = None) -> Dict[str, Any]:
@@ -55,6 +72,7 @@ def prepare_raw_message_record(message: Any, placement_drive_id: Optional[int] =
     return {
         "message_id": str(message_id),
         "source": "telegram",
+        "source_chat_id": get_telegram_chat_id(message),
         "sender": sender_name,
         "message_text": message_text,
         "message_date": message_date if isinstance(message_date, date) else None,
@@ -63,13 +81,23 @@ def prepare_raw_message_record(message: Any, placement_drive_id: Optional[int] =
     }
 
 
-def _already_saved(db: Session, telegram_message_id: str) -> bool:
-    return (
-        db.query(RawMessage)
-        .filter(RawMessage.source == "telegram", RawMessage.message_id == telegram_message_id)
-        .first()
-        is not None
+def _already_saved(
+    db: Session,
+    telegram_message_id: str,
+    source_chat_id: Optional[str] = None,
+) -> bool:
+    query = db.query(RawMessage).filter(
+        RawMessage.source == "telegram",
+        RawMessage.message_id == telegram_message_id,
     )
+    if source_chat_id is not None:
+        query = query.filter(
+            or_(
+                RawMessage.source_chat_id == str(source_chat_id),
+                RawMessage.source_chat_id.is_(None),
+            )
+        )
+    return query.first() is not None
 
 
 async def collect_telegram_messages(
@@ -116,7 +144,8 @@ async def collect_telegram_messages(
                 if not telegram_message_id:
                     continue
 
-                if _already_saved(db, telegram_message_id):
+                source_chat_id = get_telegram_chat_id(message)
+                if _already_saved(db, telegram_message_id, source_chat_id):
                     continue
 
                 payload = prepare_raw_message_record(message, placement_drive_id)

@@ -3568,6 +3568,92 @@ padding: 17px;
   }
 }
 
+.company-details-page {
+  font-size: 16px;
+}
+
+.details-back-link {
+  font-size: 16px;
+}
+
+.details-eyebrow {
+  font-size: 14px;
+}
+
+.company-hero h1 {
+  font-size: clamp(28px, 3vw, 32px);
+}
+
+.company-hero-meta span,
+.company-hero-meta a {
+  font-size: 15px;
+}
+
+.details-stat-card span,
+.eligibility-card span {
+  font-size: 14px;
+}
+
+.details-stat-card strong,
+.eligibility-card strong {
+  font-size: 16px;
+}
+
+.details-section-heading h2 {
+  font-size: 23px;
+}
+
+.details-section-heading p {
+  font-size: 15px;
+}
+
+.eligibility-description,
+.round-content span,
+.details-empty,
+.company-details-loading p,
+.company-details-error p {
+  font-size: 16px;
+}
+
+.round-content h3 {
+  font-size: 18px;
+}
+
+.round-number {
+  font-size: 16px;
+}
+
+.topic-chip span {
+  font-size: 16px;
+}
+
+.topic-chip small,
+.question-meta span {
+  font-size: 14px;
+}
+
+.question-content h3 {
+  font-size: 16px;
+}
+
+.question-number {
+  font-size: 14px;
+}
+
+.company-details-footer {
+  font-size: 14px;
+}
+
+.details-primary-button {
+  font-size: 15px;
+}
+
+@media (max-width: 650px) {
+  .company-hero h1 {
+    font-size: 28px;
+  }
+}
+
 
 /* =========================================
    ADMIN LOGIN PAGE

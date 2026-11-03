@@ -1,0 +1,9 @@
+warning: in the working copy of 'backend/nlp/classifier.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/nlp/cleaner.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/nlp/duplicate_detector.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/nlp/extractor.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'frontend/package-lock.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'frontend/package.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'frontend/src/index.css', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'frontend/src/pages/Analytics.jsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'frontend/src/pages/CompanyDetails.jsx', LF will be replaced by CRLF the next time Git touches it

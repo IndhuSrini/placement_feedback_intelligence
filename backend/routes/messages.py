@@ -7,10 +7,9 @@ from database import get_db
 from models import RawMessage, PlacementDrive
 from schemas import RawMessageCreate, RawMessageResponse
 
-from nlp.processor import process_message
-from nlp.storage import (
-    get_or_create_placement_drive_for_message,
-    store_extracted_information,
+from nlp.raw_message_processor import (
+    RawMessageProcessingError,
+    process_raw_message_record,
 )
 
 logger = logging.getLogger(__name__)
@@ -59,6 +58,7 @@ def create_message(
     new_message = RawMessage(
         message_id=message.message_id,
         source=message.source,
+        source_chat_id=message.source_chat_id,
         sender=message.sender,
         message_text=message.message_text,
         message_date=message.message_date,
@@ -100,94 +100,46 @@ def get_messages(
 )
 def process_raw_message(
     message_id: int,
+    reprocess: bool = False,
     db: Session = Depends(get_db)
 ):
-
-    # --------------------------------------------------------
-    # Find raw message
-    # --------------------------------------------------------
-
-    message = db.query(
-        RawMessage
-    ).filter(
-        RawMessage.id == message_id
-    ).first()
-
-    if not message:
-        raise HTTPException(
-            status_code=404,
-            detail="Message not found"
-        )
-
     try:
-        result = process_message(message.message_text)
-        extracted = result.get("extracted_information") or {}
-        company_name = extracted.get("company")
-
-        if company_name:
-            placement_drive = get_or_create_placement_drive_for_message(
-                db=db,
-                company_name=company_name,
-                message_text=message.message_text,
-            )
-        else:
-            placement_drive = None
-            if message.placement_drive_id is not None:
-                placement_drive = db.query(PlacementDrive).filter(
-                    PlacementDrive.id == message.placement_drive_id
-                ).first()
-
-            if placement_drive is None:
-                error = "Company not detected; no placement drive could be linked."
-                logger.warning(
-                    "Unable to process RawMessage %s: %s",
-                    message.id,
-                    error,
-                )
-                raise HTTPException(
-                    status_code=422,
-                    detail={
-                        "status": "failed",
-                        "message_id": message.id,
-                        "processed": False,
-                        "error": error,
-                    },
-                )
-
-        if placement_drive is None:
-            raise RuntimeError("Placement-drive resolution returned no drive.")
-
-        message.placement_drive_id = placement_drive.id
-        db.flush()
-
-        store_extracted_information(
+        response = process_raw_message_record(
             db=db,
-            placement_drive_id=placement_drive.id,
-            information=extracted,
-            source_message_id=message.id,
+            raw_message_id=message_id,
+            reprocess=reprocess,
         )
-
-        message.processed = True
         db.commit()
-
-        return {
-            "message_id": message.id,
-            "processed": True,
-            "placement_drive_id": placement_drive.id,
-            "nlp_result": result,
-        }
-    except HTTPException:
+        return response
+    except LookupError as exc:
         db.rollback()
-        raise
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RawMessageProcessingError as exc:
+        db.rollback()
+        logger.warning(
+            "Unable to process RawMessage %s (%s): %s",
+            message_id,
+            exc.status,
+            exc,
+        )
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail={
+                "status": exc.status,
+                "message_id": message_id,
+                "processed": False,
+                "error": str(exc),
+            },
+        ) from exc
     except Exception as exc:
         db.rollback()
-        logger.exception("Failed processing RawMessage %s", message_id)
+        logger.exception("Failed processing RawMessage %s: %s", message_id, exc)
         raise HTTPException(
             status_code=500,
             detail={
                 "status": "failed",
                 "message_id": message_id,
                 "processed": False,
-                "error": "Message processing failed while linking or storing extracted data.",
+                "error": str(exc),
             },
         ) from exc

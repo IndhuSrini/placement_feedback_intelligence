@@ -31,7 +31,9 @@ class PlacementDriveCreate(BaseModel):
     company_id: int
     recruitment_date: Optional[date] = None
     year: Optional[int] = None
+    batch: Optional[str] = None
     job_role: Optional[str] = None
+    package: Optional[str] = None
     number_of_rounds: Optional[int] = None
     overall_difficulty: Optional[str] = None
 
@@ -41,7 +43,9 @@ class PlacementDriveResponse(BaseModel):
     company_id: int
     recruitment_date: Optional[date] = None
     year: Optional[int] = None
+    batch: Optional[str] = None
     job_role: Optional[str] = None
+    package: Optional[str] = None
     number_of_rounds: Optional[int] = None
     overall_difficulty: Optional[str] = None
 
@@ -56,6 +60,7 @@ class PlacementDriveResponse(BaseModel):
 class RawMessageCreate(BaseModel):
     message_id: Optional[str] = None
     source: Optional[str] = None
+    source_chat_id: Optional[str] = None
     sender: Optional[str] = None
     message_text: str
     message_date: Optional[date] = None
@@ -68,6 +73,7 @@ class RawMessageResponse(BaseModel):
     id: int
     message_id: Optional[str] = None
     source: Optional[str] = None
+    source_chat_id: Optional[str] = None
     sender: Optional[str] = None
     message_text: str
     message_date: Optional[date] = None

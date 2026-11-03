@@ -23,82 +23,14 @@ load_dotenv(BACKEND_DIR / ".env")
 # ============================================================
 
 from database import SessionLocal
-from models import Company, PlacementDrive, RawMessage
-from nlp.processor import process_message
-from nlp.storage import store_extracted_information
+from models import RawMessage
+from nlp.raw_message_processor import process_raw_message_record
 from telegram.client import create_client, get_authorized_chat_ids
-from telegram.collector import _already_saved, prepare_raw_message_record
-
-
-# ============================================================
-# COMPANY
-# ============================================================
-
-def get_or_create_company(db, company_name: str):
-    """Find an existing company or create a new company."""
-
-    company_name = company_name.strip()
-
-    company = (
-        db.query(Company)
-        .filter(Company.name.ilike(company_name))
-        .first()
-    )
-
-    if company:
-        return company
-
-    company = Company(name=company_name)
-    db.add(company)
-    db.flush()
-
-    print(f"  + Created company: {company_name}")
-
-    return company
-
-
-# ============================================================
-# PLACEMENT DRIVE
-# ============================================================
-
-def get_or_create_placement_drive(db, company_id: int, info: dict):
-    """Find the latest drive for a company or create one."""
-
-    drive = (
-        db.query(PlacementDrive)
-        .filter(PlacementDrive.company_id == company_id)
-        .order_by(PlacementDrive.id.desc())
-        .first()
-    )
-
-    if drive is None:
-        difficulty = info.get("difficulty")
-
-        if isinstance(difficulty, list) and difficulty:
-            difficulty_value = str(difficulty[0])
-        else:
-            difficulty_value = None
-
-        rounds = info.get("rounds")
-
-        if isinstance(rounds, list):
-            round_count = len(rounds)
-        else:
-            round_count = None
-
-        drive = PlacementDrive(
-            company_id=company_id,
-            job_role=info.get("job_role"),
-            number_of_rounds=round_count,
-            overall_difficulty=difficulty_value,
-        )
-
-        db.add(drive)
-        db.flush()
-
-        print(f"  + Created placement drive for company ID {company_id}")
-
-    return drive
+from telegram.collector import (
+    _already_saved,
+    get_telegram_chat_id,
+    prepare_raw_message_record,
+)
 
 
 # ============================================================
@@ -211,7 +143,8 @@ async def main():
 
                 if _already_saved(
                     db,
-                    telegram_message_id
+                    telegram_message_id,
+                    get_telegram_chat_id(message),
                 ):
 
                     duplicate_count += 1
@@ -282,88 +215,22 @@ async def main():
                         f"{raw_message.id}..."
                     )
 
-                    # --------------------------------------------
-                    # NLP EXTRACTION
-                    # --------------------------------------------
-
-                    result = process_message(
-                        raw_message.message_text
-                    )
-
-                    info = result.get(
-                        "extracted_information",
-                        {}
-                    ) or {}
-
-                    # --------------------------------------------
-                    # COMPANY
-                    # --------------------------------------------
-
-                    company_name = info.get("company")
-
-                    if not company_name:
-
-                        print(
-                            "  ! Company not detected"
-                        )
-
-                        processing_success += 1
-                        continue
-
-                    company_name = str(
-                        company_name
-                    ).strip()
-
-                    company = get_or_create_company(
-                        db,
-                        company_name
-                    )
-
-                    # --------------------------------------------
-                    # CORRECT COMPANY'S DRIVE
-                    # --------------------------------------------
-
-                    placement_drive = (
-                        get_or_create_placement_drive(
-                            db=db,
-                            company_id=company.id,
-                            info=info
-                        )
-                    )
-
-                    # --------------------------------------------
-                    # LINK RAW MESSAGE TO DRIVE
-                    # --------------------------------------------
-
-                    raw_message.placement_drive_id = (
-                        placement_drive.id
-                    )
-
-                    db.flush()
-
-                    # --------------------------------------------
-                    # STORE NLP DATA
-                    # --------------------------------------------
-
-                    store_extracted_information(
+                    response = process_raw_message_record(
                         db=db,
-                        placement_drive_id=placement_drive.id,
-                        information=info,
-                        source_message_id=raw_message.id,
+                        raw_message_id=raw_message.id,
                     )
-
-                    raw_message.processed = True
-
                     db.commit()
-
                     processing_success += 1
+                    result = response.get("nlp_result") or {}
+                    info = result.get("extracted_information") or {}
+                    company_name = response.get("company") or info.get("company")
 
                     # --------------------------------------------
                     # DISPLAY WHAT WAS EXTRACTED
                     # --------------------------------------------
 
                     print(
-                        f"  ✓ Company: {company.name}"
+                        f"  ✓ Company: {company_name}"
                     )
 
                     if info.get("job_role"):

@@ -9,7 +9,17 @@ CATEGORIES = {
         "backlog",
         "backlogs",
         "percentage",
-        "qualification"
+        "qualification",
+    ],
+
+    "Communication": [
+        "communication",
+        "reading comprehension",
+        "grammar",
+        "vocabulary",
+        "verbal ability",
+        "communication assessment",
+        "communication round",
     ],
 
     "Aptitude": [
@@ -18,8 +28,12 @@ CATEGORIES = {
         "logical reasoning",
         "verbal ability",
         "reasoning",
-        "assessment",
-        "online assessment"
+        "online assessment",
+        "percentages",
+        "profit and loss",
+        "ratio",
+        "probability",
+        "time and work",
     ],
 
     "Coding": [
@@ -30,14 +44,15 @@ CATEGORIES = {
         "string",
         "strings",
         "leetcode",
-        "problem",
         "algorithm",
         "data structure",
         "linked list",
         "stack",
         "queue",
         "tree",
-        "graph"
+        "graph",
+        "dynamic programming",
+        "recursion",
     ],
 
     "Technical": [
@@ -50,13 +65,11 @@ CATEGORIES = {
         "object oriented programming",
         "operating system",
         "computer networks",
-        "os",
-        "process",
         "thread",
-        "network",
+        "deadlock",
         "java",
         "python",
-        "c++"
+        "c++",
     ],
 
     "HR": [
@@ -68,7 +81,8 @@ CATEGORIES = {
         "salary",
         "tell me about yourself",
         "about yourself",
-        "career goals"
+        "career goals",
+        "hobbies",
     ],
 
     "Interview Experience": [
@@ -77,43 +91,44 @@ CATEGORIES = {
         "interview",
         "asked",
         "asked to",
-        "question",
-        "questions"
     ],
 
     "Selection": [
         "selected",
         "selection",
         "offer",
-        "placed"
+        "placed",
     ],
 
     "Rejection": [
         "rejected",
         "rejection",
         "not selected",
-        "eliminated"
+        "eliminated",
     ],
 
     "Company Information": [
         "company",
         "job role",
         "package",
-        "salary",
-        "recruitment"
-    ]
+        "ctc",
+    ],
 }
 
 
 def classify_message(text: str):
+    if not text:
+        return []
 
     text_lower = text.lower()
     detected_categories = []
 
     for category, keywords in CATEGORIES.items():
         for keyword in keywords:
-            if keyword in text_lower and category not in detected_categories:
-                detected_categories.append(category)
+            pattern = rf"(?<![a-z0-9]){re.escape(keyword.lower())}(?![a-z0-9])"
+            if re.search(pattern, text_lower):
+                if category not in detected_categories:
+                    detected_categories.append(category)
                 break
 
     return detected_categories
